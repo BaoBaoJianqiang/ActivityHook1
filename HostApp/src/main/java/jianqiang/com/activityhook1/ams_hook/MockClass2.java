@@ -4,8 +4,10 @@ import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.os.Handler;
 import android.os.Message;
+import android.util.Log;
 
 import java.lang.reflect.Proxy;
+import java.util.List;
 
 import jianqiang.com.activityhook1.RefInvoke;
 
@@ -27,8 +29,11 @@ import jianqiang.com.activityhook1.RefInvoke;
         switch (msg.what) {
             // ActivityThread里面 "LAUNCH_ACTIVITY" 这个字段的值是100
             // 本来使用反射的方式获取最好, 这里为了简便直接使用硬编码
-            case 100:
+            case 100:   //for API 28以下
                 handleLaunchActivity(msg);
+                break;
+            case 159:   //for API 28
+                handleActivity(msg);
                 break;
         }
 
@@ -56,6 +61,34 @@ import jianqiang.com.activityhook1.RefInvoke;
             hookPackageManager();
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    private void handleActivity(Message msg) {
+        // 这里简单起见,直接取出TargetActivity;
+        Object obj = msg.obj;
+
+        List<Object> mActivityCallbacks = (List<Object>) RefInvoke.getFieldObject(obj, "mActivityCallbacks");
+        if(mActivityCallbacks.size() > 0) {
+            String className = "android.app.servertransaction.LaunchActivityItem";
+            if(mActivityCallbacks.get(0).getClass().getCanonicalName().equals(className)) {
+                Object object = mActivityCallbacks.get(0);
+                Intent intent = (Intent)RefInvoke.getFieldObject(object, "mIntent");
+                Intent target = intent.getParcelableExtra(AMSHookHelper.EXTRA_TARGET_INTENT);
+                intent.setComponent(target.getComponent());
+
+
+                //修改packageName，这样缓存才能命中
+                ActivityInfo activityInfo = (ActivityInfo) RefInvoke.getFieldObject(object, "mInfo");
+                activityInfo.applicationInfo.packageName = target.getPackage() == null ?
+                        target.getComponent().getPackageName() : target.getPackage();
+
+                try {
+                    hookPackageManager();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
         }
     }
 
